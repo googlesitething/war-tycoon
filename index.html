@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>War Tycoon V2 - Part 1</title>
+
+<style>
+body{
+    margin:0;
+    background:#111;
+    color:white;
+    font-family:Arial;
+    overflow:hidden;
+}
+
+#ui{
+    position:absolute;
+    top:10px;
+    left:10px;
+    z-index:10;
+    background:rgba(0,0,0,.7);
+    padding:10px;
+    border-radius:8px;
+}
+
+button{
+    margin:2px;
+    padding:6px;
+}
+
+canvas{
+    background:#355d35;
+}
+</style>
+</head>
+<body>
+
+<div id="ui">
+
+<div>💰 Money: <span id="money">0</span></div>
+<div>🏰 Base HP: <span id="basehp">0</span></div>
+<div>🌊 Wave: <span id="wave">1</span></div>
+
+<button onclick="buySoldier()">Train Soldier ($50)</button>
+<button onclick="buyTank()">Build Tank ($250)</button>
+<button onclick="upgradeBase()">Upgrade Base ($500)</button>
+<button onclick="saveGame()">Save</button>
+<button onclick="loadGame()">Load</button>
+
+</div>
+
+<canvas id="game"></canvas>
+
+<script>
+
+const canvas=document.getElementById("game");
+const ctx=canvas.getContext("2d");
+
+canvas.width=window.innerWidth;
+canvas.height=window.innerHeight;
+
+let money=500;
+let wave=1;
+
+const playerBase={
+    x:120,
+    y:canvas.height/2,
+    hp:1000,
+    maxHp:1000
+};
+
+const enemyBase={
+    x:canvas.width-120,
+    y:canvas.height/2
+};
+
+let units=[];
+let enemies=[];
+let explosions=[];
+
+class Unit{
+
+    constructor(x,y,type,team){
+
+        this.x=x;
+        this.y=y;
+        this.type=type;
+        this.team=team;
+
+        if(type==="soldier"){
+            this.hp=100;
+            this.maxHp=100;
+            this.damage=10;
+            this.range=70;
+            this.speed=1.2;
+            this.cost=50;
+        }
+
+        if(type==="tank"){
+            this.hp=300;
+            this.maxHp=300;
+            this.damage=30;
+            this.range=120;
+            this.speed=.6;
+            this.cost=250;
+        }
+
+        this.reload=0;
+    }
+
+    update(){
+
+        let targetArray=
+            this.team==="player"
+            ? enemies
+            : units;
+
+        let nearest=null;
+        let dist=999999;
+
+        for(let e of targetArray){
+
+            let d=Math.hypot(
+                e.x-this.x,
+                e.y-this.y
+            );
+
+            if(d<dist){
+                dist=d;
+                nearest=e;
+            }
+        }
+
+        if(nearest){
+
+            if(dist>this.range){
+
+                let dx=nearest.x-this.x;
+                let dy=nearest.y-this.y;
+                let len=Math.hypot(dx,dy);
+
+                this.x+=dx/len*this.speed;
+                this.y+=dy/len*this.speed;
+            }
+            else{
+
+                if(this.reload<=0){
+
+                    nearest.hp-=this.damage;
+
+                    explosions.push({
+                        x:nearest.x,
+                        y:nearest.y,
+                        life:15
+                    });
+
+                    this.reload=40;
+                }
+            }
+        }
+        else{
+
+            let targetX=
+                this.team==="player"
+                ? enemyBase.x
+                : playerBase.x;
+
+            let dx=targetX-this.x;
+
+            this.x+=Math.sign(dx)*this.speed;
+        }
+
+        this.reload--;
+
+    }
+
+    draw(){
+
+        ctx.fillStyle=
+            this.team==="player"
+            ? "#00aaff"
+            : "#ff4444";
+
+        if(this.type==="soldier"){
+
+            ctx.beginPath();
+            ctx.arc(this.x,this.y,8,0,7);
+            ctx.fill();
+        }
+
+        if(this.type==="tank"){
+
+            ctx.fillRect(
+                this.x-12,
+                this.y-8,
+                24,
+                16
+            );
+        }
+
+        ctx.fillStyle="red";
+
+        ctx.fillRect(
+            this.x-15,
+            this.y-18,
+            30,
+            4
+        );
+
+        ctx.fillStyle="lime";
+
+        ctx.fillRect(
+            this.x-15,
+            this.y-18,
+            30*(this.hp/this.maxHp),
+            4
+        );
+    }
+}
+
+function buySoldier(){
+
+    if(money<50) return;
+
+    money-=50;
+
+    units.push(
+        new Unit(
+            playerBase.x+40,
+            playerBase.y+(Math.random()*100-50),
+            "soldier",
+            "player"
+        )
+    );
+}
+
+function buyTank(){
+
+    if(money<250) return;
+
+    money-=250;
+
+    units.push(
+        new Unit(
+            playerBase.x+40,
+            playerBase.y+(Math.random()*100-50),
+            "tank",
+            "player"
+        )
+    );
+}
+
+function upgradeBase(){
+
+    if(money<500) return;
+
+    money-=500;
+
+    playerBase.maxHp+=500;
+    playerBase.hp+=500;
+}
+
+function spawnWave(){
+
+    let count=wave*3;
+
+    for(let i=0;i<count;i++){
+
+        let type=
+            Math.random()<0.75
+            ? "soldier"
+            : "tank";
+
+        enemies.push(
+            new Unit(
+                enemyBase.x-40,
+                100+Math.random()*(canvas.height-200),
+                type,
+                "enemy"
+            )
+        );
+    }
+
+    wave++;
+}
+
+setInterval(spawnWave,20000);
+
+setInterval(()=>{
+
+    money+=20;
+
+},1000);
+
+function update(){
+
+    for(let u of units) u.update();
+    for(let e of enemies) e.update();
+
+    units=units.filter(u=>u.hp>0);
+    enemies=enemies.filter(e=>e.hp>0);
+
+    for(let e of enemies){
+
+        if(
+            Math.hypot(
+                e.x-playerBase.x,
+                e.y-playerBase.y
+            )<60
+        ){
+
+            playerBase.hp-=0.2;
+        }
+    }
+
+    explosions.forEach(e=>e.life--);
+
+    explosions=
+        explosions.filter(
+            e=>e.life>0
+        );
+
+    if(playerBase.hp<=0){
+
+        alert("Game Over");
+        location.reload();
+    }
+
+    document.getElementById(
+        "money"
+    ).innerText=Math.floor(money);
+
+    document.getElementById(
+        "basehp"
+    ).innerText=
+        Math.floor(playerBase.hp)+
+        "/"+
+        playerBase.maxHp;
+
+    document.getElementById(
+        "wave"
+    ).innerText=wave;
+
+}
+
+function draw(){
+
+    ctx.clearRect(
+        0,
+        0,
+        canvas.width,
+        canvas.height
+    );
+
+    ctx.fillStyle="#666";
+
+    ctx.fillRect(
+        playerBase.x-40,
+        playerBase.y-40,
+        80,
+        80
+    );
+
+    ctx.fillStyle="#aa2222";
+
+    ctx.fillRect(
+        enemyBase.x-40,
+        enemyBase.y-40,
+        80,
+        80
+    );
+
+    ctx.fillStyle="gold";
+
+    ctx.fillRect(
+        playerBase.x+70,
+        playerBase.y-30,
+        60,
+        60
+    );
+
+    ctx.fillStyle="white";
+    ctx.fillText(
+        "Barracks",
+        playerBase.x+70,
+        playerBase.y-40
+    );
+
+    for(let u of units) u.draw();
+    for(let e of enemies) e.draw();
+
+    explosions.forEach(ex=>{
+
+        ctx.fillStyle=
+            "rgba(255,150,0,"+
+            ex.life/15+
+            ")";
+
+        ctx.beginPath();
+
+        ctx.arc(
+            ex.x,
+            ex.y,
+            25-ex.life,
+            0,
+            7
+        );
+
+        ctx.fill();
+
+    });
+
+}
+
+function gameLoop(){
+
+    update();
+    draw();
+
+    requestAnimationFrame(
+        gameLoop
+    );
+}
+
+function saveGame(){
+
+    localStorage.setItem(
+        "wartycoonv2",
+        JSON.stringify({
+            money,
+            wave,
+            baseHp:playerBase.hp,
+            maxHp:playerBase.maxHp
+        })
+    );
+
+    alert("Saved");
+}
+
+function loadGame(){
+
+    let save=
+        localStorage.getItem(
+            "wartycoonv2"
+        );
+
+    if(!save) return;
+
+    save=JSON.parse(save);
+
+    money=save.money;
+    wave=save.wave;
+
+    playerBase.hp=
+        save.baseHp;
+
+    playerBase.maxHp=
+        save.maxHp;
+
+    alert("Loaded");
+}
+
+spawnWave();
+gameLoop();
+
+</script>
+
+</body>
+</html>
